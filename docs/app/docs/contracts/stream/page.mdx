@@ -292,20 +292,40 @@ authorization from both the current and the new admin.
 
 ## Events emitted
 
-These are the events `stellar-stream-hive-api`'s indexer
-(`api/src/indexer/events.rs`) decodes from `result_meta_xdr`. See that module's
-doc comment for the canonical reference; reproduced here for convenience:
+All three contracts publish typed events. The table below is the consolidated
+reference for the Stream, Vault, and Registry contracts, taken from each
+contract's `events.rs`. Each event's name is its first topic `Symbol`. Events
+with a `#[topic]` field carry that field as a second topic (`U64`). Multi-field
+data is a `Vec` in declaration order; single-value data is the value itself.
 
-| Event | Topics | Data (`Vec`) |
-|---|---|---|
-| `create` | `[Symbol("create"), U64(id)]` | `[Address(sender), Address(recipient), Address(token), I128(total_amount), U32(start_ledger), U32(end_ledger), U32(cliff_ledger), Bool(cancellable)]` |
-| `withdraw` | `[Symbol("withdraw"), U64(id)]` | `[Address(recipient), I128(amount)]` |
-| `cancel` | `[Symbol("cancel"), U64(id)]` | `[Address(sender), I128(streamed_now), I128(remainder)]` |
-| `pause` / `unpause` | `[Symbol("pause")]` / `[Symbol("unpause")]` | `[Address(admin)]` |
-| `admin_transfer` | `[Symbol("admin_transfer")]` | `[Address(previous_admin), Address(new_admin)]` |
+| Contract | Event | Topics | Data |
+|---|---|---|---|
+| Stream | `create` | `[Symbol("create"), U64(stream_id)]` | `Vec[Address(sender), Address(recipient), Address(token), I128(total_amount), U32(start_ledger), U32(end_ledger), U32(cliff_ledger), Bool(cancellable)]` |
+| Stream | `withdraw` | `[Symbol("withdraw"), U64(stream_id)]` | `Vec[Address(recipient), I128(amount)]` |
+| Stream | `cancel` | `[Symbol("cancel"), U64(stream_id)]` | `Vec[Address(sender), I128(streamed_now), I128(remainder)]` |
+| Stream | `pause` | `[Symbol("pause")]` | `Vec[Address(admin)]` |
+| Stream | `unpause` | `[Symbol("unpause")]` | `Vec[Address(admin)]` |
+| Stream | `admin_transfer` | `[Symbol("admin_transfer")]` | `Vec[Address(previous_admin), Address(new_admin)]` |
+| Vault | `deposit` | `[Symbol("deposit"), U64(stream_id)]` | `Vec[Address(from), Address(token), I128(amount)]` |
+| Vault | `release` | `[Symbol("release"), U64(stream_id)]` | `Vec[Address(to), Address(token), I128(amount)]` |
+| Vault | `refund` | `[Symbol("refund"), U64(stream_id)]` | `Vec[Address(to), Address(token), I128(amount)]` |
+| Vault | `set_stream_contract` | `[Symbol("set_stream_contract")]` | `Address(new_contract)` |
+| Registry | `register` | `[Symbol("register"), U64(stream_id)]` | `I128(amount)` |
+| Registry | `update` | `[Symbol("update"), U64(stream_id)]` | `I128(withdrawn)` |
 
-The indexer only needs the first three; `cancel`'s `streamed_now` is what the
-recipient keeps (and may still withdraw, minus `withdrawn`).
+<CalloutBox variant="warning" title="`create` has two new trailing fields">
+  `create` now carries `cliff_ledger` and `cancellable` in its data `Vec`. This
+  is a breaking change for consumers that decode `create` by field count or
+  position: they must read the two extra trailing fields before they can
+  decode it.
+</CalloutBox>
+
+The indexer in `stellar-stream-hive-api` (`api/src/indexer/events.rs`) decodes
+only the Stream contract's `create`, `withdraw`, and `cancel` events, which it
+reads from Soroban RPC `getEvents` filtered to the Stream contract. Its module
+doc comment is the canonical reference for that wire format. `cancel`'s
+`streamed_now` is what the recipient keeps (and may still withdraw, minus
+`withdrawn`).
 
 ## Security notes
 
